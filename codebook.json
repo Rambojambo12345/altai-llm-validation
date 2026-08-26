@@ -1,0 +1,80 @@
+{
+  "instrument": "Augmented ALTAI coding codebook (19 original ALTAI sub-principles + 8 inductively derived CDA/nested sub-principles)",
+  "source": "Sub-principle definitions 1-19 adapted from the HLEG (2020) Assessment List for Trustworthy AI. Definitions 20-27 reproduced from the manuscript's own Tables 3 and 4 (construct boundaries and illustrative audit evidence).",
+  "unit_of_analysis": "A component is an atomic prescriptive step, requirement, control, test, checklist question, or outcome criterion extracted from a single framework document.",
+  "decision_rule": "Assign zero or one code per component. If a component maps to more than one sub-principle, assign the single best-fitting code based on its primary/dominant requirement. If a component does not fit any of the 27 sub-principles below, assign code 0 (UNMAPPED). Do not code purely illustrative or descriptive statements that contain no prescriptive requirement, evidence expectation, or decision criterion.",
+  "principles": [
+    {
+      "key_principle": "Human Agency and Oversight",
+      "sub_principles": [
+        {"id": 1, "name": "Human Agency and Autonomy", "definition": "Addresses how the AI system affects human behaviour, decision-making, and perception. Covers whether the system creates confusion about algorithmic involvement, generates over-reliance/automation bias, or risks manipulating users through simulated social interaction."},
+        {"id": 2, "name": "Human Oversight", "definition": "Examines governance mechanisms enabling human intervention in AI operations: human-in-the-loop, human-on-the-loop, or human-in-command approaches, including operator training, detection mechanisms for erroneous outputs, and override/stop capability."}
+      ]
+    },
+    {
+      "key_principle": "Technical Robustness and Safety",
+      "sub_principles": [
+        {"id": 3, "name": "Resilience to Attack and Security", "definition": "Assesses vulnerability to adversarial attacks, cyber threats, and malicious use, and evaluates protective measures against data poisoning, model evasion, and model inversion attacks across the system lifecycle."},
+        {"id": 4, "name": "General Safety", "definition": "Covers risk identification, measurement, and mitigation across use cases: threat/hazard assessment, safety criticality levels, fault-tolerance planning, and criteria for when the system requires re-evaluation."},
+        {"id": 5, "name": "Accuracy", "definition": "Focuses on ensuring the system's predictions/outputs maintain appropriate precision for their use case: data-quality requirements, ongoing accuracy monitoring, and communicating performance/error expectations to users."},
+        {"id": 6, "name": "Reliability, Fall-back and Reproducibility", "definition": "Evaluates consistent performance across contexts and conditions: verification/validation methods, fail-safe/fall-back procedures, handling of low-confidence outputs, and management of risk from continual learning or model drift."},
+        {"id": 22, "name": "System Design and Development", "definition": "Structured engineering practices that reduce defect/unsafe behaviour before deployment (e.g., hazard analysis, safety cases, secure-by-design). Boundary: not the same as Reliability/Accuracy (outcome metrics) nor Traceability (documentation); focuses on process controls and design artefacts. Evidence: design controls (e.g., STPA/FMEA records, model/spec reviews), signed safety case or assurance argument, change control and design history file, secure checkpoints for ML."},
+        {"id": 23, "name": "Performance and Monitoring", "definition": "Ongoing, post-deployment surveillance of model/process performance in live context. Boundary: distinct from Reliability/Fallback (capability) by requiring operational thresholds and intervention playbooks. Evidence: defined KPIs/guardrails with thresholds, drift/decay monitors, incident runbooks, rollback procedures tested in production-like environments."}
+      ]
+    },
+    {
+      "key_principle": "Privacy and Data Governance",
+      "sub_principles": [
+        {"id": 7, "name": "Privacy", "definition": "Assesses the AI system's impact on the right to privacy and to physical, mental and/or moral integrity, and includes mechanisms for flagging privacy-related issues arising from the system."},
+        {"id": 8, "name": "Data Governance", "definition": "Examines data protection compliance and management practice: Data Protection Impact Assessments, privacy-by-design measures, data minimisation, implementation of data-subject rights, and alignment with data management standards."}
+      ]
+    },
+    {
+      "key_principle": "Transparency",
+      "sub_principles": [
+        {"id": 9, "name": "Traceability", "definition": "Documents the development process to enable tracking of data, models, and decisions: ability to identify which training data, model version, and rules produced a given output, via continuous quality assessment and logging."},
+        {"id": 10, "name": "Explainability", "definition": "Enables understanding of how the AI system reaches its conclusions: technical process explanation and reasoning transparency, with particular attention to opaque ('black-box') systems requiring alternative accountability measures."},
+        {"id": 11, "name": "Communication", "definition": "Conveys system capabilities, limitations, and accuracy to users: disclosing AI involvement in interactions, explaining decision criteria, communicating risks, and providing user-facing training/explanatory materials."}
+      ]
+    },
+    {
+      "key_principle": "Diversity, Non-discrimination and Fairness",
+      "sub_principles": [
+        {"id": 12, "name": "Avoidance of Unfair Bias", "definition": "Prevents systematic errors that discriminate against specific groups: bias detection and mitigation across data collection and algorithm design, plus reporting mechanisms for identified bias."},
+        {"id": 13, "name": "Accessibility and Unfair Design", "definition": "Ensures the system serves diverse users regardless of age, ability, or other characteristics: universal-design principles and accessibility standards, particularly for people with disabilities and assistive-technology users."},
+        {"id": 14, "name": "Stakeholder Participation", "definition": "Incorporates affected parties into design and development: seeking regular feedback from those directly or indirectly impacted (including workers and community representatives) across the system lifecycle."}
+      ]
+    },
+    {
+      "key_principle": "Societal and Environmental Well-being",
+      "sub_principles": [
+        {"id": 15, "name": "Environmental Well-being", "definition": "Evaluates ecological impact across development and deployment: energy consumption and carbon-emissions measurement, and reduction measures across the system's lifecycle."},
+        {"id": 16, "name": "Impact on Work and Skills", "definition": "Assesses effects on employment and worker capability: worker consultation, understanding of how the system changes work, de-skilling risk, and retraining/upskilling provision for affected staff."},
+        {"id": 17, "name": "Impact on Society at Large or Democracy", "definition": "Examines broader societal and democratic effects beyond direct users: potential harms to institutional integrity, electoral processes, or pluralistic values in society."}
+      ]
+    },
+    {
+      "key_principle": "Accountability",
+      "sub_principles": [
+        {"id": 18, "name": "Auditability", "definition": "Enables independent evaluation of the AI system and its governing processes: traceability mechanisms, documentation practices, and third-party audit capability, without necessarily disclosing proprietary information."},
+        {"id": 19, "name": "Risk Management", "definition": "Establishes processes for identifying, documenting, and minimising adverse impacts: external oversight, ethics review, vulnerability-reporting mechanisms, whistleblower protection, and redress procedures for affected individuals."},
+        {"id": 25, "name": "Auditing Context", "definition": "Scoping and governance of the audit itself: system boundary, object of audit, assurance level, materiality, evidence strategy, and independence. Boundary: not Auditability (system's capability to be audited) nor Risk Management (control cycle); focuses on audit-specific scoping questions such as what is being audited. Evidence: approved audit plan (scope, materiality, criteria), evidence map (artefacts, sources, samples), independence statement, stakeholder access protocols, traceable linkage from findings to corrective actions."}
+      ]
+    },
+    {
+      "key_principle": "Context-Driven Alignment (inductively derived; not in original ALTAI)",
+      "sub_principles": [
+        {"id": 20, "name": "Organisational Context and Strategy", "definition": "Links the AI system to business purpose, criticality, accountable owner, and success criteria. Boundary: not generic Risk Management; requires purpose, control and KPI alignment for this specific system. Evidence: system dossier stating purpose, need for AI, owner, criticality tier; control objectives; governance forum minutes showing alignment decisions."},
+        {"id": 21, "name": "Compliance and Legal", "definition": "Mapping of applicable obligations beyond data protection (sectoral, product safety, equal opportunity, financial conduct, medical device, etc.) with accountable owners. Boundary: distinct from Privacy/Data Governance; extends to non-data legal regimes. Evidence: compliance requirements with citations; legal applicability analysis; notified legal team of relevant adaptations or changes to the AI system."},
+        {"id": 24, "name": "Training and Awareness", "definition": "Role-specific capability to operate, monitor, and intervene in the specific AI system. Boundary: not generic ethics training; distinct from Auditability (system docs) by focusing on human readiness. Evidence: roles with learning outcomes tied to system risks; completion/assessment of training records; evidence of training updates after model changes."},
+        {"id": 26, "name": "Operational Context and Risks", "definition": "Environment/interaction constraints of deployment (workflows, interfaces, human factors, edge cases) and preparedness for disruption. Boundary: not solely Technical Robustness; emphasises socio-technical fit and operational hazards. Evidence: context-of-use analysis; HRA/usability evidence; failure mode libraries; scenario tests on real workflows; business continuity and incident playbooks referencing AI behaviours."},
+        {"id": 27, "name": "Third-party Risks", "definition": "Dependence on external models, data, vendors, or cloud services, including assurance inheritance and residual risk. Boundary: complements Risk Management by focusing specifically on supply-chain attestations. Evidence: supplier assurance pack (e.g., SOC/ISO mappings), model card/data sheet from vendors, contract clauses for updates/incidents/audit rights, results of third-party impact tests."}
+      ]
+    }
+  ],
+  "unmapped": {
+    "id": 0,
+    "name": "UNMAPPED",
+    "definition": "Use when a component does not correspond to any of the 27 sub-principles above and is not merely illustrative/descriptive text."
+  }
+}
