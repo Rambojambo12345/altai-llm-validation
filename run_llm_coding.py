@@ -168,11 +168,11 @@ def code_one_component(client, system_prompt, component_text, run_index):
     resp = client.messages.create(
         model=MODEL_ID,
         max_tokens=MAX_TOKENS,
-        temperature=TEMPERATURE,
         system=system_prompt,
         tools=[TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": "code_component"},
         messages=[{"role": "user", "content": user_msg}],
+        extra_body={"temperature": TEMPERATURE},
     )
     tool_use = next((b for b in resp.content if b.type == "tool_use"), None)
     if tool_use is None:
