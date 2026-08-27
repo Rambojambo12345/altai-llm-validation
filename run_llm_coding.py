@@ -7,10 +7,11 @@ WHAT THIS DOES
 For every coded component in master_components_final.csv, this script asks
 an LLM (via a fresh, isolated API call -- NOT a chat conversation) to assign
 a sub-principle code using ONLY the codebook, blind to your original code.
-It runs each component through the model three independent times, takes the
-modal (most common) label, and writes out everything needed to compute
-human-LLM agreement statistics: Krippendorff's alpha, Cohen's kappa, per-
-class precision/recall/F1, a confusion matrix, and self-consistency rates.
+By default it runs each component through the model ONCE (see --n-runs and
+--sample-n below for a cheaper way to establish self-consistency than
+tripling the cost of the whole corpus), and writes out everything needed to
+compute human-LLM agreement statistics: Krippendorff's alpha, Cohen's kappa,
+per-class precision/recall/F1, and a confusion matrix.
 
 WHY IT MUST RUN OUTSIDE THIS CHAT
 ----------------------------------
@@ -37,14 +38,20 @@ HOW TO RUN IT
 3. Put this script, codebook.json, and master_components_final.csv in the
    same folder, then run:
 
-     python run_llm_coding.py --dev-run          # cheap sanity check, ~20 items
-     python run_llm_coding.py                    # full production run
+     python run_llm_coding.py --dev-run                     # ~20 items, 3 runs each, cheap
+     python run_llm_coding.py                                # full run, 1 pass per component
+     python run_llm_coding.py --sample-n 100 --n-runs 3 \
+       --out-suffix consistency_check                        # separate self-consistency check
 
-The full run makes roughly 3 x (number of components) API calls. At current
-Claude Haiku/Sonnet pricing this is a few dollars for ~2,200 components;
-using a larger model costs more but is more defensible for a validation
-exercise (see the protocol notes sent earlier -- prefer the strongest model
-you can afford for this).
+The default full run makes exactly (number of components) API calls -- one
+pass each, not three -- because prompt caching plus a single pass is far
+cheaper than tripling every call, and the dev-run's self-consistency number
+tells you whether tripling was even buying you anything before you spend
+more. COST IS MODEL-DEPENDENT AND NOT SMALL: get an actual read on it by
+running --dev-run first and checking your provider's usage dashboard, then
+scale that number up by (total components / 20) rather than trusting any
+estimate written here. Opus-tier models can easily run into the hundreds of
+dollars for the full corpus; Sonnet is the default for exactly that reason.
 
 OUTPUT FILES (all written to ./output/)
 ----------------------------------------
@@ -82,11 +89,22 @@ except ImportError:
 # production run: your methods section needs to name an exact, re-runnable
 # model. Check https://docs.claude.com/en/docs/about-claude/models for the
 # current list of dated snapshot IDs and swap this if it has been retired.
+#
+# COST WARNING: per official pricing (platform.claude.com/docs, checked
+# 2026-08), Opus is ~1.7x Sonnet per token ($5/$25 vs $3/$15 per MTok,
+# input/output) -- the model choice alone is a modest lever. The two real
+# levers are (a) prompt caching, now enabled below, which drops the repeated
+# codebook's cost by ~90% after the first call, and (b) N_RUNS_DEFAULT=1
+# instead of tripling every call. Combined, these are roughly a 15-20x
+# reduction versus the uncached x3 Opus run this script started as -- verify
+# against your own account's usage dashboard rather than trusting this
+# comment. Only use Opus for a deliberately small cross-check subsample.
 # ---------------------------------------------------------------------------
-MODEL_ID = "claude-opus-4-5-20251101"   # <-- verify this is still a valid snapshot id before running
+MODEL_ID = "claude-sonnet-4-5-20250929"   # <-- verify this is still a valid snapshot id before running
 TEMPERATURE = 0.0
 MAX_TOKENS = 500
-N_RUNS = 3
+N_RUNS_DEFAULT = 1   # single pass for the main corpus (see --n-runs and --consistency-check-n below)
+CONSISTENCY_CHECK_N_DEFAULT = 100  # separate subsample triple-run to report self-consistency, not 3x on everything
 DEV_FRACTION = 0.20
 RANDOM_SEED = 20260825  # fixed and reported, not re-rolled between runs
 
@@ -168,10 +186,22 @@ def code_one_component(client, system_prompt, component_text, run_index):
     resp = client.messages.create(
         model=MODEL_ID,
         max_tokens=MAX_TOKENS,
-        system=system_prompt,
+        # The codebook is identical on every single call (this is required for
+        # blinding/independence -- see the module docstring), so it's the
+        # textbook case for prompt caching: mark it as an ephemeral cache
+        # breakpoint. After the first call, cached input tokens are billed at
+        # a small fraction of normal input-token price. Since the system
+        # prompt (the codebook) dominates the token count of every request
+        # here, this is the single biggest cost lever in this script.
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         tools=[TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": "code_component"},
         messages=[{"role": "user", "content": user_msg}],
+        # anthropic-sdk-python v1.0 removed temperature/top_p/top_k as direct
+        # keyword arguments to messages.create() for current models -- they
+        # now have to be passed through extra_body. This still works with
+        # older (<1.0) SDK versions too, since extra_body has always been
+        # accepted as a pass-through for raw request-body fields.
         extra_body={"temperature": TEMPERATURE},
     )
     tool_use = next((b for b in resp.content if b.type == "tool_use"), None)
@@ -184,10 +214,39 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input-csv", default=str(HERE / "master_components_final.csv"))
     ap.add_argument("--dev-run", action="store_true",
-                     help="Only process ~20 randomly sampled components, for a cheap sanity check.")
+                     help="Only process the first N of the frozen dev set (see --dev-run-size), "
+                          "for a cheap sanity check before spending on the full corpus.")
+    ap.add_argument("--dev-run-size", type=int, default=20,
+                     help="How many dev-set components --dev-run processes. Pass the full dev "
+                          "set size (see the 'Dev set: N components' line from --split-only) to "
+                          "run the whole dev set after revising the codebook, before freezing it "
+                          "and moving to --held-out.")
+    ap.add_argument("--held-out", action="store_true",
+                     help="Process the frozen held-out set (everything NOT in the dev set). Use "
+                          "this only after the codebook is finalised from dev-set results -- "
+                          "editing the codebook after seeing held-out results invalidates the "
+                          "held-out/dev split.")
     ap.add_argument("--split-only", action="store_true",
                      help="Only produce the frozen dev/held-out split, make no API calls.")
+    ap.add_argument("--n-runs", type=int, default=None,
+                     help="Independent runs per component. Default: 3 for --dev-run (cheap, "
+                          "establishes whether self-consistency holds), 1 for a full run "
+                          "(cheaper; use --sample-n with --n-runs 3 separately to report a "
+                          "self-consistency statistic on a subsample instead of tripling the "
+                          "whole corpus).")
+    ap.add_argument("--sample-n", type=int, default=None,
+                     help="Process only a random N-component sample instead of everything. "
+                          "Combine with --n-runs 3 and --out-suffix to produce a standalone "
+                          "self-consistency check without re-running/re-paying for the full corpus.")
+    ap.add_argument("--out-suffix", default="",
+                     help="Suffix appended to output filenames, so a --sample-n side run "
+                          "doesn't overwrite your main coded_results.csv.")
     args = ap.parse_args()
+
+    n_runs = args.n_runs if args.n_runs is not None else (3 if args.dev_run else N_RUNS_DEFAULT)
+
+    print(f"anthropic SDK version: {getattr(anthropic, '__version__', 'unknown')} "
+          f"(this gets recorded in run_manifest.json -- keep it for your methods section)")
 
     codebook = load_codebook()
     system_prompt = flatten_codebook_for_prompt(codebook)
@@ -234,14 +293,38 @@ def main():
 
     targets = shuffled
     if args.dev_run:
-        targets = shuffled[:20]
-        print(f"--dev-run: processing only {len(targets)} components as a sanity check.")
+        targets = dev_set[:args.dev_run_size]
+        print(f"--dev-run: processing {len(targets)}/{len(dev_set)} dev-set components.")
+    elif args.held_out:
+        targets = held_out_set
+        print(f"--held-out: processing all {len(targets)} held-out components. "
+              f"Make sure the codebook is FINAL before this -- editing it after seeing "
+              f"these results invalidates the dev/held-out split.")
+    elif args.sample_n:
+        targets = shuffled[:args.sample_n]
+        print(f"--sample-n {args.sample_n}: processing a random subsample.")
+
+    n_calls = len(targets) * n_runs
+    # Rough order-of-magnitude cost estimate, printed BEFORE spending anything.
+    # This is deliberately conservative/approximate -- check your provider's
+    # current pricing page for exact numbers. It exists so a cost surprise
+    # like the €2-for-20-components one gets caught before a 2,245-item run,
+    # not after.
+    approx_system_tokens = len(system_prompt) // 4
+    approx_output_tokens = 250
+    print(f"\nAbout to make ~{n_calls} API calls ({len(targets)} components x {n_runs} run(s)) "
+          f"against model '{MODEL_ID}'.")
+    print(f"Each call sends ~{approx_system_tokens} codebook tokens (cached after the first "
+          f"call) plus a short component + ~{approx_output_tokens} output tokens.")
+    print("Check https://www.anthropic.com/pricing for this model's current per-token rate "
+          "before a large run, and consider --sample-n for a smaller cost-check first.\n")
 
     run_manifest = {
         "model_id": MODEL_ID,
+        "anthropic_sdk_version": getattr(anthropic, "__version__", "unknown"),
         "temperature": TEMPERATURE,
         "max_tokens": MAX_TOKENS,
-        "n_runs": N_RUNS,
+        "n_runs": n_runs,
         "random_seed": RANDOM_SEED,
         "dev_fraction": DEV_FRACTION,
         "n_components_total": len(rows),
@@ -253,15 +336,25 @@ def main():
         "input_csv": args.input_csv,
     }
 
-    raw_log_path = OUT_DIR / "raw_runs.jsonl"
+    suffix = f"_{args.out_suffix}" if args.out_suffix else ""
+    raw_log_path = OUT_DIR / f"raw_runs{suffix}.jsonl"
     results = []
 
     with open(raw_log_path, "a", encoding="utf-8") as raw_log:
         for idx, row in enumerate(targets):
             component_runs = []
-            for run_i in range(N_RUNS):
+            for run_i in range(n_runs):
                 try:
                     parsed, raw = code_one_component(client, system_prompt, row["component_text"], run_i)
+                except TypeError as e:
+                    if "temperature" in str(e):
+                        print("\nFATAL: your installed anthropic SDK's messages.create() does not "
+                              "accept this call shape. Run `pip show anthropic` to check the version, "
+                              "then `pip install --upgrade anthropic` and try again.", file=sys.stderr)
+                        sys.exit(1)
+                    print(f"  ERROR on row {row['_row_id']} run {run_i}: {e}", file=sys.stderr)
+                    time.sleep(2)
+                    continue
                 except Exception as e:
                     print(f"  ERROR on row {row['_row_id']} run {run_i}: {e}", file=sys.stderr)
                     time.sleep(2)
@@ -310,13 +403,15 @@ def main():
             if (idx + 1) % 25 == 0:
                 print(f"  processed {idx + 1}/{len(targets)}")
 
-    with open(OUT_DIR / "coded_results.csv", "w", newline="", encoding="utf-8") as f:
+    results_path = OUT_DIR / f"coded_results{suffix}.csv"
+    with open(results_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
         w.writeheader()
         w.writerows(results)
 
     run_manifest["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
-    with open(OUT_DIR / "run_manifest.json", "w", encoding="utf-8") as f:
+    manifest_path = OUT_DIR / f"run_manifest{suffix}.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(run_manifest, f, indent=2)
 
     n_agree = sum(1 for r in results if r["human_llm_agree"])
@@ -324,9 +419,10 @@ def main():
     n_self_consistent = sum(1 for r in results if r["llm_self_consistent"])
     print(f"\nDone. {len(results)} components processed.")
     print(f"Raw agreement: {n_agree}/{n_scored} = {n_agree/max(n_scored,1):.1%}")
-    print(f"Self-consistency across 3 runs: {n_self_consistent}/{len(results)} = {n_self_consistent/max(len(results),1):.1%}")
-    print(f"\nWrote: output/coded_results.csv, output/raw_runs.jsonl, output/run_manifest.json")
-    print("Next: run compute_reliability.py on output/coded_results.csv")
+    if n_runs > 1:
+        print(f"Self-consistency across {n_runs} runs: {n_self_consistent}/{len(results)} = {n_self_consistent/max(len(results),1):.1%}")
+    print(f"\nWrote: {results_path.name}, {raw_log_path.name}, {manifest_path.name} (in output/)")
+    print(f"Next: python compute_reliability.py --input output/{results_path.name}")
 
 
 if __name__ == "__main__":
