@@ -1,0 +1,17 @@
+{
+  "model_id": "claude-sonnet-4-5-20250929",
+  "anthropic_sdk_version": "1.1.0",
+  "temperature": 0.0,
+  "max_tokens": 500,
+  "n_runs": 1,
+  "random_seed": 20260825,
+  "dev_fraction": 0.2,
+  "n_components_total": 2245,
+  "n_dev": 449,
+  "n_held_out": 1796,
+  "n_processed_this_execution": 449,
+  "started_at_utc": "2026-08-27T17:08:49.482012+00:00",
+  "system_prompt_sha256": "723f88eab30924d4f77f1459e4364a70ecc37d9f63bbcce542f859d00d782b10",
+  "input_csv": "/workspaces/altai-llm-validation/master_components_final.csv",
+  "finished_at_utc": "2026-08-27T17:51:24.048930+00:00"
+}
