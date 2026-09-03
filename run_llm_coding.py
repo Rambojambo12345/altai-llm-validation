@@ -1,69 +1,6 @@
 #!/usr/bin/env python3
 """
 LLM-assisted validation coder for the ALTAI/CDA component dataset.
-
-WHAT THIS DOES
----------------
-For every coded component in master_components_final.csv, this script asks
-an LLM (via a fresh, isolated API call -- NOT a chat conversation) to assign
-a sub-principle code using ONLY the codebook, blind to your original code.
-By default it runs each component through the model ONCE (see --n-runs and
---sample-n below for a cheaper way to establish self-consistency than
-tripling the cost of the whole corpus), and writes out everything needed to
-compute human-LLM agreement statistics: Krippendorff's alpha, Cohen's kappa,
-per-class precision/recall/F1, and a confusion matrix.
-
-WHY IT MUST RUN OUTSIDE THIS CHAT
-----------------------------------
-Any conversation that has seen the manuscript, its results, or its
-hypotheses is a contaminated coder -- it already knows what the "right"
-answer is supposed to look like, which defeats the purpose of an
-independent validation. This script makes fresh, stateless API calls: each
-call contains nothing but the codebook and one component's text. Nothing
-about your paper, your findings, or this conversation is ever sent to the
-model being validated.
-
-HOW TO RUN IT
--------------
-1. Install dependencies:
-     pip install anthropic pandas
-
-2. Get an API key from https://console.anthropic.com/ (Settings > API Keys).
-   Do NOT paste it into a chat with any AI assistant. Set it as an
-   environment variable in your own terminal:
-
-     export ANTHROPIC_API_KEY="sk-ant-..."         (macOS/Linux)
-     setx ANTHROPIC_API_KEY "sk-ant-..."            (Windows, new terminal after)
-
-3. Put this script, codebook.json, and master_components_final.csv in the
-   same folder, then run:
-
-     python run_llm_coding.py --dev-run                     # ~20 items, 3 runs each, cheap
-     python run_llm_coding.py                                # full run, 1 pass per component
-     python run_llm_coding.py --sample-n 100 --n-runs 3 \
-       --out-suffix consistency_check                        # separate self-consistency check
-
-The default full run makes exactly (number of components) API calls -- one
-pass each, not three -- because prompt caching plus a single pass is far
-cheaper than tripling every call, and the dev-run's self-consistency number
-tells you whether tripling was even buying you anything before you spend
-more. COST IS MODEL-DEPENDENT AND NOT SMALL: get an actual read on it by
-running --dev-run first and checking your provider's usage dashboard, then
-scale that number up by (total components / 20) rather than trusting any
-estimate written here. Opus-tier models can easily run into the hundreds of
-dollars for the full corpus; Sonnet is the default for exactly that reason.
-
-OUTPUT FILES (all written to ./output/)
-----------------------------------------
-  raw_runs.jsonl        - every single API call: full prompt params, raw
-                           response, timestamp. This is your reproducibility
-                           record -- keep it, deposit it with the paper.
-  coded_results.csv      - one row per component: original code, all 3 LLM
-                           run codes, modal LLM code, agreement flag,
-                           self-consistency flag, confidence, verbatim span.
-  dev_set.csv / held_out_set.csv - the frozen 20/80 split (see protocol).
-  run_manifest.json      - exact model id, temperature, seed, timestamps,
-                           row counts -- paste this into your methods section.
 """
 
 import argparse
@@ -84,29 +21,13 @@ except ImportError:
     print("Missing dependency. Run: pip install anthropic pandas", file=sys.stderr)
     sys.exit(1)
 
-# ---------------------------------------------------------------------------
-# CONFIG -- pin the exact model snapshot. Do not use a "latest" alias for the
-# production run: your methods section needs to name an exact, re-runnable
-# model. Check https://docs.claude.com/en/docs/about-claude/models for the
-# current list of dated snapshot IDs and swap this if it has been retired.
-#
-# COST WARNING: per official pricing (platform.claude.com/docs, checked
-# 2026-08), Opus is ~1.7x Sonnet per token ($5/$25 vs $3/$15 per MTok,
-# input/output) -- the model choice alone is a modest lever. The two real
-# levers are (a) prompt caching, now enabled below, which drops the repeated
-# codebook's cost by ~90% after the first call, and (b) N_RUNS_DEFAULT=1
-# instead of tripling every call. Combined, these are roughly a 15-20x
-# reduction versus the uncached x3 Opus run this script started as -- verify
-# against your own account's usage dashboard rather than trusting this
-# comment. Only use Opus for a deliberately small cross-check subsample.
-# ---------------------------------------------------------------------------
-MODEL_ID = "claude-sonnet-4-5-20250929"   # <-- verify this is still a valid snapshot id before running
+MODEL_ID = "claude-sonnet-4-5-20250929"   
 TEMPERATURE = 0.0
 MAX_TOKENS = 500
-N_RUNS_DEFAULT = 1   # single pass for the main corpus (see --n-runs and --consistency-check-n below)
-CONSISTENCY_CHECK_N_DEFAULT = 100  # separate subsample triple-run to report self-consistency, not 3x on everything
+N_RUNS_DEFAULT = 1   
+CONSISTENCY_CHECK_N_DEFAULT = 100  
 DEV_FRACTION = 0.20
-RANDOM_SEED = 20260825  # fixed and reported, not re-rolled between runs
+RANDOM_SEED = 20260825  
 
 HERE = Path(__file__).parent
 OUT_DIR = HERE / "output"
@@ -119,9 +40,6 @@ def load_codebook():
 
 
 def flatten_codebook_for_prompt(codebook):
-    """Render the codebook as the text block the model sees. This text is
-    the ENTIRE substantive content of every prompt -- it never changes
-    between components, so it's easy to audit for leakage."""
     lines = [
         "You are applying a fixed coding scheme to short excerpts from AI",
         "governance / auditing documents. Read the CODEBOOK below, then code",
@@ -186,22 +104,10 @@ def code_one_component(client, system_prompt, component_text, run_index):
     resp = client.messages.create(
         model=MODEL_ID,
         max_tokens=MAX_TOKENS,
-        # The codebook is identical on every single call (this is required for
-        # blinding/independence -- see the module docstring), so it's the
-        # textbook case for prompt caching: mark it as an ephemeral cache
-        # breakpoint. After the first call, cached input tokens are billed at
-        # a small fraction of normal input-token price. Since the system
-        # prompt (the codebook) dominates the token count of every request
-        # here, this is the single biggest cost lever in this script.
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         tools=[TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": "code_component"},
         messages=[{"role": "user", "content": user_msg}],
-        # anthropic-sdk-python v1.0 removed temperature/top_p/top_k as direct
-        # keyword arguments to messages.create() for current models -- they
-        # now have to be passed through extra_body. This still works with
-        # older (<1.0) SDK versions too, since extra_body has always been
-        # accepted as a pass-through for raw request-body fields.
         extra_body={"temperature": TEMPERATURE},
     )
     tool_use = next((b for b in resp.content if b.type == "tool_use"), None)
@@ -254,16 +160,12 @@ def main():
     with open(args.input_csv, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
-    # Blind: strip anything that could leak the original code or reveal
-    # sector/provenance in a way the human coder didn't see at coding time.
-    # We KEEP original_code/sector internally for later scoring, but they are
-    # NEVER placed into a prompt sent to the model.
     for i, r in enumerate(rows):
         r["_row_id"] = i
 
     rng = random.Random(RANDOM_SEED)
     shuffled = rows[:]
-    rng.shuffle(shuffled)  # randomised order -- avoids same-framework context effects
+    rng.shuffle(shuffled)  
 
     n_dev = int(len(shuffled) * DEV_FRACTION)
     dev_set = shuffled[:n_dev]
@@ -305,11 +207,6 @@ def main():
         print(f"--sample-n {args.sample_n}: processing a random subsample.")
 
     n_calls = len(targets) * n_runs
-    # Rough order-of-magnitude cost estimate, printed BEFORE spending anything.
-    # This is deliberately conservative/approximate -- check your provider's
-    # current pricing page for exact numbers. It exists so a cost surprise
-    # like the €2-for-20-components one gets caught before a 2,245-item run,
-    # not after.
     approx_system_tokens = len(system_prompt) // 4
     approx_output_tokens = 250
     print(f"\nAbout to make ~{n_calls} API calls ({len(targets)} components x {n_runs} run(s)) "

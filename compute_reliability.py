@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-Compute human-LLM agreement statistics from output/coded_results.csv.
-
-Run this AFTER run_llm_coding.py has produced output/coded_results.csv.
-
-    pip install scikit-learn krippendorff pandas
-    python compute_reliability.py
-
-Writes output/reliability_report.json and output/confusion_matrix.csv, and
-prints a summary you can paste into the methods/results section, split by
-dev vs. held-out (report the held-out numbers as your primary result; the
-dev numbers only show what the prompt was tuned on).
-"""
 import csv
 import json
 from collections import Counter
