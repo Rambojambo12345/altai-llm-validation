@@ -61,24 +61,21 @@ def compute_for_subset(df, label):
     }
 
     if HAVE_KRIPPENDORFF:
-        # reliability_data: 2 raters x n units, categorical/nominal
         rel_data = [
             df["original_code_id"].tolist(),
             df["llm_modal_code_id"].tolist(),
         ]
-        # krippendorff needs numeric-coercible or consistent categorical codes
         value_domain = sorted(set(rel_data[0]) | set(rel_data[1]))
         vmap = {v: i for i, v in enumerate(value_domain)}
         numeric_data = [[vmap[x] for x in rater] for rater in rel_data]
         alpha = krippendorff.alpha(reliability_data=numeric_data, level_of_measurement="nominal")
         result["krippendorff_alpha"] = round(float(alpha), 4)
 
-    # self-consistency
+
     if "llm_self_consistent" in df.columns:
         sc = df["llm_self_consistent"].astype(str).str.lower().eq("true")
         result["llm_self_consistency_rate"] = round(float(sc.mean()), 4)
-        # accuracy conditional on self-consistency (the Pangakis et al. check)
-        if sc.sum() > 0:
+                if sc.sum() > 0:
             result["raw_agreement_when_self_consistent"] = round(
                 float((df.loc[sc, "original_code_id"] == df.loc[sc, "llm_modal_code_id"]).mean()), 4
             )
@@ -112,7 +109,7 @@ def main():
     print("\n>>> Report the HELD-OUT numbers as your primary reliability statistic.")
     print(">>> The dev-set numbers only describe what the prompt was tuned on.")
 
-    # disagreement sample for blind human adjudication
+    
     df["original_code_id"] = df["original_code_id"].astype(str)
     df["llm_modal_code_id"] = df["llm_modal_code_id"].astype(str)
     disagreements = df[df["original_code_id"] != df["llm_modal_code_id"]]
@@ -127,7 +124,7 @@ def main():
             ("A", row["original_code_id"]),
             ("B", row["llm_modal_code_id"]),
         ]
-        r.shuffle(candidates)  # blind labelling: adjudicator doesn't see which is which
+        r.shuffle(candidates)  
         adjudication_rows.append({
             "row_id": row["row_id"],
             "framework": row["framework"],
@@ -135,7 +132,7 @@ def main():
             "candidate_A_label": candidates[0][1],
             "candidate_B_label": candidates[1][1],
             "which_was_human": "A" if candidates[0][1] == row["original_code_id"] else "B",
-            "adjudicator_verdict": "",  # fill in: A / B / neither
+            "adjudicator_verdict": "",  
         })
 
     adj_path = OUT_DIR / "adjudication_sample.csv"
